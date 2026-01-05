@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cte-k8s-config
+  namespace: {{ .Values.namespace }}
+data:
+  "log_level": "{{ .Values.image.logLevel }}"

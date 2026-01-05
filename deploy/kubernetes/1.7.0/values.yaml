@@ -1,0 +1,43 @@
+# Default values for csi-deploy-chart.
+
+replicaCount: 1
+
+namespace: "kube-system"
+
+image:
+  cteCsiImage: "docker.io/thalesciphertrust/ciphertrust-transparent-encryption-kubernetes"
+  cteCsiTag: "1.7.0-latest"
+  pullPolicy: Always
+  logLevel: "1"
+  pauseImage: "registry.k8s.io/pause:3.9"
+  csiProvisionerImage: "registry.k8s.io/sig-storage/csi-provisioner:v4.0.0"
+  csiNodeDriverRegistrarImage: "k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.0.1"
+  csiAttacherImage: "k8s.gcr.io/sig-storage/csi-attacher:v3.3.0"
+
+imagePullSecrets: cte-csi-secret
+
+csiSnapshotter:
+  repository: registry.k8s.io/sig-storage/csi-snapshotter
+  tag: v6.3.3
+  pullPolicy: IfNotPresent
+
+csiResizer:
+  repository: registry.k8s.io/sig-storage/csi-resizer
+  tag: v1.8.0
+  pullPolicy: IfNotPresent
+
+APIServerThrottle:
+  burst: 300
+  qps: 200
+
+# Time interval for monitoring Pending Unregistration
+# Integer value in minutes. Default is 10 minutes.
+RegistrationCleanupInterval: 10
+
+# CRI API unix socket for container image service
+# depending on installation could be one of the following:
+# /run/crio/crio.sock              (CRI-O)
+# /run/containerd/containerd.sock  (containerd)
+# /run/cri-dockerd.sock            (docker, k8s version >= 1.24)
+# /var/run/dockershim.sock         (docker, k8s version < 1.24, deprecated)
+CRISocket: /run/crio/crio.sock

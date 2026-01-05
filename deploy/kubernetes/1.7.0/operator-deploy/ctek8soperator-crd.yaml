@@ -1,0 +1,34 @@
+apiVersion: cte-k8s-operator.csi.cte.cpl.thalesgroup.com/v1
+kind: CteK8sOperator
+metadata:
+  labels:
+    app.kubernetes.io/name: ctek8soperator
+    app.kubernetes.io/instance: ctek8soperator
+    app.kubernetes.io/part-of: cte-k8s-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: cte-k8s-operator
+  name: ctek8soperator
+spec:
+  replicas: 1
+  image: "docker.io/thalesciphertrust/ciphertrust-transparent-encryption-kubernetes"
+  version: "1.7.0-latest"
+  imagePullPolicy: Always
+  logLevel: 1
+  apiburst: 300
+  apiqps: 200
+  imagePullSecrets:
+    - name: cte-csi-secret
+  registrationCleanupInterval: 1
+  pauseimage: "registry.k8s.io/pause:3.9"
+  volumes:
+    - name: cri-sock
+      hostPath:
+        path: "/run/crio/crio.sock"
+  # the following parameters are optional. If values are not specified, default values would be taken
+  csiProvisionerImage: registry.k8s.io/sig-storage/csi-provisioner:v4.0.0
+  csiNodeDriverRegistrarImage: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.0.1
+  csiAttacherImage: k8s.gcr.io/sig-storage/csi-attacher:v3.3.0
+  csiSnapshotterImage: registry.k8s.io/sig-storage/csi-snapshotter:v6.3.3
+  snapImagePullPolicy: IfNotPresent
+  csiResizerImage: registry.k8s.io/sig-storage/csi-resizer:v1.8.0
+  resizerImagePullPolicy: IfNotPresent

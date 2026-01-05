@@ -1,0 +1,11 @@
+kind: Subscription
+apiVersion: operators.coreos.com/v1alpha1
+metadata:
+  name: ctek8soperator-sub
+  namespace: kube-system
+spec:
+  channel: stable
+  installPlanApproval: Automatic
+  name: cte-k8s-operator
+  source: ctek8soperator-catalog
+  sourceNamespace: olm

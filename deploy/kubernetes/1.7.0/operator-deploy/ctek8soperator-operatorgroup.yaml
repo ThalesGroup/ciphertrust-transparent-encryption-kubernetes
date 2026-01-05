@@ -1,0 +1,6 @@
+kind: OperatorGroup
+apiVersion: operators.coreos.com/v1
+metadata:
+  name: ctek8soperator-og
+spec:
+  upgradeStrategy: Default

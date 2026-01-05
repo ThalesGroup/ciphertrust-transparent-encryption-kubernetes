@@ -1,0 +1,5 @@
+Deployment:
+- deploy/kubernetes/csi-deploy-chart/templates/rbac-cte-csi-controller.yaml
+- deploy/kubernetes/csi-deploy-chart/templates/rbac-cte-csi-nodeserver.yaml
+- deploy/kubernetes/csi-deploy-chart/templates/cte-csi-controller.yaml
+- deploy/kubernetes/csi-deploy-chart/templates/cte-csi-nodeserver.yaml

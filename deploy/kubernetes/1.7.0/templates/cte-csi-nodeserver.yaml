@@ -1,0 +1,157 @@
+---
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: cte-csi-node
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: cte-csi-node
+  updateStrategy:
+    type: OnDelete
+  template:
+    metadata:
+      labels:
+        app: cte-csi-node
+    spec:
+      hostPID: true
+      serviceAccountName: cte-csi-node
+      terminationGracePeriodSeconds: 600
+      nodeSelector:
+        kubernetes.io/os: linux
+      priorityClassName: system-node-critical
+      tolerations:
+        - operator: "Exists"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: type
+                    operator: NotIn
+                    values:
+                      - virtual-kubelet
+                  - key: kubernetes.io/arch
+                    operator: In
+                    values:
+                      - amd64
+                      - arm64
+      volumes:
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: Directory
+
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi.cte.cpl.thalesgroup.com/
+            type: DirectoryOrCreate
+
+        - name: mountpoint-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: DirectoryOrCreate
+
+        - name: dshm
+          emptyDir:
+            medium: Memory
+
+        - name: varlog
+          emptyDir: {}
+
+        - name: chroot
+          emptyDir: {}
+
+        - name: cri-sock
+          hostPath:
+            path: {{ .Values.CRISocket }}
+
+      containers:
+        - name: cte-csi
+          image: "{{ .Values.image.cteCsiImage }}:{{ .Values.image.cteCsiTag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -rf /csi/csi.sock"]
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+            - name: KUBE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          args:
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--nodeid=$(KUBE_NODE_NAME)"
+            - "--namespace=$(KUBE_NAMESPACE)"
+            - "--v={{ .Values.image.logLevel }}"
+            - "--apiburst={{ .Values.APIServerThrottle.burst }}"
+            - "--apiqps={{ .Values.APIServerThrottle.qps }}"
+            - "--registration-cleanup-interval={{ .Values.RegistrationCleanupInterval }}"
+            - "--pauseimage={{ .Values.image.pauseImage }}"
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - SYS_ADMIN
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: mountpoint-dir
+              mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+            - name: dshm
+              mountPath: /dev/shm
+            - name: varlog
+              mountPath: /var/log
+            - name: chroot
+              mountPath: /chroot
+            - name: cri-sock
+              mountPath: /var/run/cri.sock
+
+        - name: cte-agent-logs
+          image: "{{ .Values.image.cteCsiImage }}:{{ .Values.image.cteCsiTag }}"
+          args:
+            - "--agentlogs"
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: varlog
+              mountPath: /var/log
+            - name: chroot
+              mountPath: /chroot
+
+        - name: csi-sidecar-registrar
+          image: "{{ .Values.image.csiNodeDriverRegistrarImage }}"
+          args:
+            - "--csi-address=/csi/csi.sock"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi.cte.cpl.thalesgroup.com/csi.sock"
+            - "--v={{ .Values.image.logLevel }}"
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+
+        - name: csi-sidecar-attacher
+          image: "{{ .Values.image.csiAttacherImage }}"
+          args:
+            - "--csi-address=/csi/csi.sock"
+            - "--v={{ .Values.image.logLevel }}"
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - mountPath: /csi
+              name: plugin-dir
+
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecrets }}
