@@ -1,0 +1,128 @@
+# Default values for csi-deploy-chart with COS support.
+# This unified configuration supports both CSI and COS deployment modes.
+
+# Shared namespace for both CSI and COS
+namespace: "kube-system"
+
+# COMMON IMAGE used by both CSI and COS services
+# The same image is used for CSI driver and COS controller
+image:
+  cteCsiImage: "docker.io/thalesciphertrust/ciphertrust-transparent-encryption-kubernetes"
+  cteCsiTag: "2.0.0-latest"
+  pullPolicy: Always
+  logLevel: "1"
+
+imagePullSecrets: cte-csi-secret
+
+# ============================================================================
+# CSI CONFIGURATION - Configure and enable/disable CSI driver deployment
+# ============================================================================
+csi:
+  # Set to false to skip CSI driver deployment
+  enabled: true
+
+  # CSI sidecar container images
+  pauseImage:
+    repository: registry.k8s.io/pause
+    tag: "3.9"
+    pullPolicy: IfNotPresent
+
+  csiProvisioner:
+    repository: registry.k8s.io/sig-storage/csi-provisioner
+    tag: v4.0.0
+    pullPolicy: IfNotPresent
+
+  csiNodeDriverRegistrar:
+    repository: registry.k8s.io/sig-storage/csi-node-driver-registrar
+    tag: v2.0.1
+    pullPolicy: IfNotPresent
+
+  csiAttacher:
+    repository: registry.k8s.io/sig-storage/csi-attacher
+    tag: v3.3.0
+    pullPolicy: IfNotPresent
+    # Number of concurrent worker threads for the CSI attacher sidecar.
+    # Worker threads process VolumeAttachment objects in parallel.
+    # - Higher values: Faster processing of multiple volume attachments simultaneously,
+    #   but increases CPU/memory usage and Kubernetes API load.
+    # - Lower values: Reduced resource consumption and API load, but slower
+    #   processing when many volumes need to be attached concurrently.
+    # Recommended: 20 for typical workloads. Increase for large clusters with
+    # many concurrent volume operations; decrease for resource-constrained environments.
+    workerThreads: 20
+
+  csiSnapshotter:
+    repository: registry.k8s.io/sig-storage/csi-snapshotter
+    tag: v6.3.3
+    pullPolicy: IfNotPresent
+
+  csiResizer:
+    repository: registry.k8s.io/sig-storage/csi-resizer
+    tag: v1.8.0
+    pullPolicy: IfNotPresent
+    # Number of concurrent worker threads for the CSI resizer sidecar.
+    # Worker threads process PersistentVolumeClaim (PVC) resize requests in parallel.
+    # - Higher values: Faster processing of multiple volume resize operations simultaneously,
+    #   but increases CPU/memory usage and Kubernetes API load.
+    # - Lower values: Reduced resource consumption and API load, but slower
+    #   processing when many volumes need to be resized concurrently.
+    # Recommended: 20 for typical workloads. Increase for large clusters with
+    # many concurrent volume resize operations; decrease for resource-constrained environments.
+    workerThreads: 20
+
+  # CSI sidecar containers common configuration (provisioner, snapshotter, resizer, attacher)
+  sidecarCommonConfigs:
+    # Retry interval configuration controls the exponential backoff behavior when operations fail.
+    # - retryIntervalStart: Initial retry interval (default: 5s)
+    # - retryIntervalMax: Maximum retry interval cap (default: 30m)
+    # The retry interval doubles after each failure until it reaches retryIntervalMax.
+    # A longer retryIntervalMax (e.g., 30m) prevents hammering the Kubernetes API
+    # when failures are persistent and require manual intervention.
+    # A shorter value (e.g., 30s) causes more frequent retries but increases API load.
+    retryIntervalStart: "5s"
+    retryIntervalMax: "30m"
+
+    # Kubernetes API server throttling configuration
+    # - qps: Queries per second limit for API requests
+    # - burst: Maximum burst of API requests allowed above the QPS limit
+    APIServerThrottle:
+      burst: 300
+      qps: 200
+
+  # Time interval for monitoring Pending Unregistration
+  # Integer value in minutes. Default is 10 minutes.
+  RegistrationCleanupInterval: 10
+
+  # CRI API unix socket for container image service
+  # depending on installation could be one of the following:
+  # /run/crio/crio.sock              (CRI-O)
+  # /run/containerd/containerd.sock  (containerd)
+  # /run/cri-dockerd.sock            (docker, k8s version >= 1.24)
+  # /var/run/dockershim.sock         (docker, k8s version < 1.24, deprecated)
+  CRISocket: /run/crio/crio.sock
+
+# ============================================================================
+# COS CONFIGURATION - Configure and enable/disable COS controller deployment
+# ============================================================================
+cos:
+  # Set to false to skip COS controller deployment
+  enabled: false
+
+  # Number of controller replicas
+  replicaCount: 1
+
+  # Service account name used by the controller pod
+  serviceAccountName: cte-cos-controller-sa
+
+  # RBAC resource names
+  rbac:
+    clusterRoleName: cte-cos-controller-role
+    clusterRoleBindingName: cte-cos-controller-binding
+
+  # Controller deployment settings
+  controller:
+    name: cte-cos-controller-deployment
+    containerName: cte-cos-controller
+    # Arguments passed to the controller binary
+    # Note: namespace is injected from .Values.namespace
+    args: "-controller"

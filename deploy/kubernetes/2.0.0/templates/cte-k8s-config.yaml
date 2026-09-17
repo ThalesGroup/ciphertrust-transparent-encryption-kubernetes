@@ -1,0 +1,9 @@
+{{- if or .Values.csi.enabled .Values.cos.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cte-k8s-config
+  namespace: {{ .Values.namespace }}
+data:
+  "log_level": "{{ .Values.image.logLevel }}"
+{{- end }}

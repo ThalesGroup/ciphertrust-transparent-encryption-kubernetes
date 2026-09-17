@@ -1,0 +1,89 @@
+{{- if .Values.cos.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Values.cos.rbac.clusterRoleName }}
+  labels:
+    app.kubernetes.io/name: cte-cos
+    app.kubernetes.io/instance: {{ .Release.Name }}
+rules:
+  # Permissions to watch our custom resource
+  - apiGroups: ["thalesgroup.com"]
+    resources: ["cmregistrationclasses"]
+    verbs: ["get", "list", "watch", "patch"]
+
+  # Permissions to manage finalizers on the owner(CMRegistrationClass) resource, to
+  # enable 'blockOwnerDeletion: true' on an ownerReference. COS Controller creates
+  # dependent resources (deployment, service account, services with ownerReference)
+  - apiGroups: ["thalesgroup.com"]
+    resources: ["cmregistrationclasses/finalizers"]
+    verbs: ["update"]
+
+  # Permissions to read the secrets referenced by the CRD
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "watch"]
+
+  # Permissions to create and update events for CMregistrationClass resources
+  # Required for recording success/failure events visible in 'kubectl describe cmrc'
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch", "update"]
+
+  # Permissions for processor pods to get Node and Namespace info
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces"]
+    verbs: ["get"]
+
+  # Permissions to list, watch, and patch pods
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "patch"]
+
+  # Permission to update the COS Proxy pod status
+  - apiGroups: [""]
+    resources: ["pods/status"]
+    verbs: ["get", "update", "patch"]
+
+  # Permissions to manage the CA certificate ConfigMap
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create"]
+
+  # Permissions to watch the CTE-K8s ConfigMap named "cte-k8s-config".
+  # COS Controller and Runner pods watch the "cte-k8s-config" ConfigMap in the
+  # COS Controller namespace (same as CSI namespace) for dynamic log level updates
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["cte-k8s-config"]
+    verbs: ["watch"]
+
+  # Permissions to manage Deployments
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Permissions to manage Services
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Permissions to manage ServiceAccounts
+  # Rule 1: Allow creation of ServiceAccounts.
+  # Note: This allows creating a ServiceAccount with any name, as RBAC cannot restrict creation by name.
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["create"]
+
+  # Rule 2: Allow get operations ONLY for CTE COS ServiceAccount named "cte-cos-controller-sa"
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    resourceNames: ["{{ .Values.cos.serviceAccountName }}"]     # Only for CTE COS ServiceAccount
+    verbs: ["get"]
+
+  # Permissions to manage ClusterRoleBinding
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterrolebindings"]
+    resourceNames: ["{{ .Values.cos.rbac.clusterRoleBindingName }}"]  # Only for CTE COS ClusterRoleBinding
+    verbs: ["get", "patch"]
+{{- end }}

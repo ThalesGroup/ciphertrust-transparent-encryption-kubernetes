@@ -1,0 +1,68 @@
+# CMregistrationClass — Fully annotated example
+# Every optional field included with explanatory comments.
+#
+# apiVersion: thalesgroup.com/v1
+# kind: CMregistrationClass
+# scope: Namespaced
+# shortName: cmrc
+#
+# Immutable fields (cannot be edited — delete and recreate to change):
+#   registration_group, registration_token_secret, storage_cred, external_ca_secret, nodeport_service
+#
+# Modifiable fields (can be edited in place):
+#   key_manager_addr, default_replicas (initial value only), session_timeout,
+#   memory_request, memory_limit
+#
+# IMPORTANT: Editing modifiable fields on the CMregistrationClass does NOT
+# automatically update the running proxy Deployment. Edit the Deployment directly
+# to change runtime behavior.
+apiVersion: thalesgroup.com/v1
+kind: CMregistrationClass
+metadata:
+  name: cos-demo-registration
+  namespace: cos-demo
+spec:
+  # Address of the CipherTrust Manager (FQDN or IP reachable from the cluster).
+  # Modifiable after creation.
+  key_manager_addr: cm.example.com
+
+  # Storage group name as configured in CipherTrust Manager.
+  # Immutable after creation.
+  registration_group: cos-demo-group
+
+  # Name of the Secret (CM registration token). Same namespace.
+  # Immutable after creation.
+  registration_token_secret: cos-reg-secret
+
+  # Name of the Secret for AWS credentials. Same namespace.
+  # Immutable after creation.
+  storage_cred: cos-storage-cred
+
+  # Name of the Secret for Client CA cert + key. Same namespace.
+  # Immutable after creation.
+  external_ca_secret: cos-external-ca
+
+  # Initial number of proxy pods created with the Deployment.
+  # Editing this field on an existing CMregistrationClass does NOT rescale
+  # the running Deployment — edit the Deployment directly for that.
+  default_replicas: 3
+
+  # Optional. Creates a NodePort Service in addition to the ClusterIP Service.
+  # Use "auto" for a Kubernetes-assigned port, or a numeric string e.g. "30080".
+  # INTENDED FOR TESTING ONLY — exposes the proxy on every node's external IP
+  # with no load balancing or access control. For production external access,
+  # front the ClusterIP Service with a load balancer or ingress controller.
+  # Immutable after creation. Leave unset in production.
+  # nodeport_service: "auto"
+
+  # Session affinity timeout in seconds for both ClusterIP and NodePort Services.
+  # Default 900. Modifiable after creation (edit the Service directly at runtime).
+  session_timeout: 1800
+
+  # Memory request for the processor container of each proxy pod. Default 2Gi.
+  # Modifiable after creation (edit the Deployment directly at runtime).
+  memory_request: "2Gi"
+
+  # Memory limit for the processor container of each proxy pod. Default 2Gi.
+  # Modifiable after creation (edit the Deployment directly at runtime).
+  memory_limit: "4Gi"

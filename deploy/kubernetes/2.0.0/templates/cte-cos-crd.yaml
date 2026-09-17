@@ -1,0 +1,71 @@
+{{- if .Values.cos.enabled }}
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: cmregistrationclasses.thalesgroup.com
+  labels:
+    app.kubernetes.io/name: cte-cos
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  group: thalesgroup.com
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                key_manager_addr:
+                  type: string
+                  description: "Address of the registration server (modifiable)"
+                registration_group:
+                  type: string
+                  description: "Immutable service group identifier"
+                registration_token_secret:
+                  type: string
+                  description: "Name of Kubernetes Secret used for registration (immutable)"
+                storage_cred:
+                  type: string
+                  description: "Name of Kubernetes Secret containing AWS credentials (immutable)"
+                external_ca_secret:
+                  type: string
+                  description: "Name of Kubernetes Secret containing external CA as Squid CA Certificate (immutable)"
+                default_replicas:
+                  type: integer
+                  format: int32
+                  description: "Number of replicas (modifiable)"
+                nodeport_service:
+                  type: string
+                  description: "NodePort for external traffic. Use 'auto' for Kubernetes auto-assignment, or specify a port number (e.g., '30080'). (Immutable)"
+                session_timeout:
+                  type: integer
+                  format: int32
+                  description: "Configure session affinity timeout in seconds (e.g., 1800, 3600) for ClusterIP and NodePort services. Default session affinity is configured with 900 seconds."
+                memory_limit:
+                  type: string
+                  pattern: "^([0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$"
+                  description: "Memory limit for processor container (e.g., '2Gi', '4Gi'). Defaults to 2Gi. Logger is hardcoded to 256Mi."
+                memory_request:
+                  type: string
+                  pattern: "^([0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$"
+                  description: "Memory request for processor container (e.g., '1Gi', '2Gi'). Defaults to 2Gi. Logger is hardcoded to 256Mi."
+              required:
+                - key_manager_addr
+                - registration_group
+                - registration_token_secret
+                - storage_cred
+                - default_replicas
+      subresources:
+        status: {}
+  scope: Namespaced
+  names:
+    plural: cmregistrationclasses
+    singular: cmregistrationclass
+    kind: CMregistrationClass
+    shortNames:
+      - cmrc
+{{- end }}

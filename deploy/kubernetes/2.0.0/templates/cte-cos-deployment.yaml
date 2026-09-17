@@ -1,0 +1,55 @@
+{{- if .Values.cos.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.cos.controller.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: cte-cos
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.cos.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cte-cos
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cte-cos
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      serviceAccountName: {{ .Values.cos.serviceAccountName }}
+      containers:
+        - name: {{ .Values.cos.controller.containerName }}
+          # The same image is used for the controller and for spawned
+          # cte cos proxy pods (CTE_K8S_IMAGE).
+          # The image is shared with the CSI driver.
+          image: "{{ .Values.image.cteCsiImage }}:{{ .Values.image.cteCsiTag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: CTE_K8S_IMAGE
+              # Must match the controller image so cos proxy pods run the same binary.
+              value: "{{ .Values.image.cteCsiImage }}:{{ .Values.image.cteCsiTag }}"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: KUBE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+          command: ["/bin/sh", "-c"]
+          args:
+            - "./cte_cos {{ .Values.cos.controller.args }} -namespace {{ .Values.namespace }}"
+            - "--v={{ .Values.image.logLevel }}"
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecrets }}
+      {{- end }}
+{{- end }}

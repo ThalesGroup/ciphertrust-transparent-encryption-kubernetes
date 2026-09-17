@@ -1,0 +1,235 @@
+{{- if .Values.csi.enabled }}
+---
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: csi.cte.cpl.thalesgroup.com
+spec:
+  podInfoOnMount: true
+  fsGroupPolicy: File
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: cte-csi-controller
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cte-csi-controller
+  template:
+    metadata:
+      labels:
+        app: cte-csi-controller
+    spec:
+      serviceAccountName: cte-csi-controller
+      priorityClassName: system-cluster-critical
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+        - key: "node-role.kubernetes.io/master"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/controlplane"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "node-role.kubernetes.io/control-plane"
+          operator: "Exists"
+          effect: "NoSchedule"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/arch
+                    operator: In
+                    values:
+                      - amd64
+                      - arm64
+      volumes:
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: Directory
+
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi.cte.cpl.thalesgroup.com/
+            type: DirectoryOrCreate
+
+        - name: dshm
+          emptyDir:
+            medium: Memory
+
+      containers:
+        - name: cte-csi
+          image: "{{ .Values.image.cteCsiImage }}:{{ .Values.image.cteCsiTag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -rf /csi/csi-controller.sock"]
+          startupProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "test -S /csi/csi-controller.sock"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 60
+          args:
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--nodeid=$(KUBE_NODE_NAME)"
+            - "--namespace=$(KUBE_NAMESPACE)"
+            - "--v={{ .Values.image.logLevel }}"
+            - "--controller"
+            - "--apiburst={{ .Values.csi.sidecarCommonConfigs.APIServerThrottle.burst }}"
+            - "--apiqps={{ .Values.csi.sidecarCommonConfigs.APIServerThrottle.qps }}"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi-controller.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+            - name: KUBE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - SYS_ADMIN
+          volumeMounts:
+            - name: plugin-dir
+              mountPath: /csi
+
+        - name: cte-csi-signer
+          image: "{{ .Values.image.cteCsiImage }}:{{ .Values.image.cteCsiTag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--nodeid=$(KUBE_NODE_NAME)"
+            - "--namespace=$(KUBE_NAMESPACE)"
+            - "--v={{ .Values.image.logLevel }}"
+            - "--signer"
+            - "--apiburst={{ .Values.csi.sidecarCommonConfigs.APIServerThrottle.burst }}"
+            - "--apiqps={{ .Values.csi.sidecarCommonConfigs.APIServerThrottle.qps }}"
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+            - name: KUBE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - SYS_ADMIN
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+
+        - name: csi-provisioner
+          image: "{{ .Values.csi.csiProvisioner.repository }}:{{ .Values.csi.csiProvisioner.tag }}"
+          imagePullPolicy: {{ .Values.csi.csiProvisioner.pullPolicy }}
+          args:
+            - "--v={{ .Values.image.logLevel }}"
+            - "--csi-address=/csi/csi-controller.sock"
+            - "--extra-create-metadata"
+            - "--feature-gates=Topology=true"
+            - "--leader-election"
+            - "--timeout=120s"
+            - "--retry-interval-start={{ .Values.csi.sidecarCommonConfigs.retryIntervalStart }}"
+            - "--retry-interval-max={{ .Values.csi.sidecarCommonConfigs.retryIntervalMax }}"
+            - "--kube-api-qps={{ .Values.csi.sidecarCommonConfigs.APIServerThrottle.qps }}"
+            - "--kube-api-burst={{ .Values.csi.sidecarCommonConfigs.APIServerThrottle.burst }}"
+          securityContext:
+            # This is necessary only for systems with SELinux, where
+            # non-privileged sidecar containers cannot access unix domain socket
+            # created by privileged CSI driver container.
+            privileged: true
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi-controller.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+            - name: KUBE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          volumeMounts:
+            - mountPath: /csi
+              name: plugin-dir
+
+        - name: csi-snapshotter
+          image: "{{ .Values.csi.csiSnapshotter.repository }}:{{ .Values.csi.csiSnapshotter.tag }}"
+          imagePullPolicy: {{ .Values.csi.csiSnapshotter.pullPolicy }}
+          args:
+            - "--v=2"
+            - "--csi-address=/csi/csi-controller.sock"
+            - "--leader-election-namespace=$(KUBE_NAMESPACE)"
+            - "--leader-election"
+            - "--timeout=120s"
+            - "--retry-interval-start={{ .Values.csi.sidecarCommonConfigs.retryIntervalStart }}"
+            - "--retry-interval-max={{ .Values.csi.sidecarCommonConfigs.retryIntervalMax }}"
+            - "--kube-api-qps={{ .Values.csi.sidecarCommonConfigs.APIServerThrottle.qps }}"
+            - "--kube-api-burst={{ .Values.csi.sidecarCommonConfigs.APIServerThrottle.burst }}"
+          env:
+            - name: KUBE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          volumeMounts:
+            - mountPath: /csi
+              name: plugin-dir
+          securityContext:
+            privileged: true
+
+        - name: csi-resizer
+          image: "{{ .Values.csi.csiResizer.repository }}:{{ .Values.csi.csiResizer.tag }}"
+          imagePullPolicy: {{ .Values.csi.csiResizer.pullPolicy }}
+          args:
+            - "--timeout=120s"
+            - "--csi-address=/csi/csi-controller.sock"
+            - "--v=2"
+            - "--leader-election=true"
+            - "--kube-api-qps={{ .Values.csi.sidecarCommonConfigs.APIServerThrottle.qps }}"
+            - "--kube-api-burst={{ .Values.csi.sidecarCommonConfigs.APIServerThrottle.burst }}"
+            - "--workers={{ .Values.csi.csiResizer.workerThreads }}"
+            - "--retry-interval-start={{ .Values.csi.sidecarCommonConfigs.retryIntervalStart }}"
+            - "--retry-interval-max={{ .Values.csi.sidecarCommonConfigs.retryIntervalMax }}"
+            - "--handle-volume-inuse-error=false"
+          env:
+            - name: KUBE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          volumeMounts:
+            - mountPath: /csi
+              name: plugin-dir
+          securityContext:
+            privileged: true
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecrets }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,78 @@
+# Application Pod — Minimal test pod (AWS CLI)
+# A simple test pod that lists a bucket using the AWS CLI,
+# proving that S3 traffic flows through the CoS encryption proxy.
+#
+# This example uses a Debian-family base image (amazon/aws-cli:2.15.0).
+# The mount path and postStart command are Debian-family specific.
+# For the correct paths per base image family:
+#   Debian/Ubuntu:          /usr/local/share/ca-certificates/cos-root-ca.crt  + update-ca-certificates
+#   RHEL/CentOS/Rocky/UBI:  /etc/pki/ca-trust/source/anchors/cos-root-ca.crt  + update-ca-trust extract
+#   Amazon Linux 2/2023:    /etc/pki/ca-trust/source/anchors/cos-root-ca.crt  + update-ca-trust extract
+#   SUSE/openSUSE:          /etc/pki/trust/anchors/cos-root-ca.crt             + update-ca-certificates
+#   Alpine:                 /usr/local/share/ca-certificates/cos-root-ca.crt  + update-ca-certificates
+#
+# WARNING: amazon/aws-cli image tags may use either Amazon Linux or Debian base depending on the tag.
+# Verify before deploying: docker run --rm --entrypoint sh <image> -c 'cat /etc/os-release'
+#
+# Prerequisites:
+#   - Namespace cos-demo with a running CMregistrationClass named cos-demo-registration
+#   - Secret cos-root-ca-trust containing rootCA.crt (from cte-cos-root-ca-trust-secret.yaml)
+#
+# How to apply:
+#   kubectl apply -f cte-cos-app-pod-test.yaml
+#
+# Test S3 access through the proxy:
+#   kubectl exec -n cos-demo s3-test -- aws s3 ls s3://your-bucket
+#
+# Objects written through this pod are stored as ciphertext in S3.
+# Objects read through this pod are decrypted transparently.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: s3-test
+  namespace: cos-demo
+spec:
+  containers:
+    - name: awscli
+      # Debian-family image. Uses /usr/local/share/ca-certificates and update-ca-certificates.
+      image: amazon/aws-cli:2.15.0
+      command: ["sh", "-c", "sleep 3600"]
+
+      # Pull HTTP_PROXY / HTTPS_PROXY / NO_PROXY from the ConfigMap
+      # created by the CMregistrationClass (named cte-cos-<cmrc-name>-proxy-config).
+      envFrom:
+        - configMapRef:
+            name: cte-cos-cos-demo-registration-proxy-config
+
+      # AWS credentials for direct SDK use (not proxied credentials — those are in the proxy itself).
+      env:
+        - name: AWS_ACCESS_KEY_ID
+          value: "AKIAEXAMPLE1234567"
+        - name: AWS_SECRET_ACCESS_KEY
+          value: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+      volumeMounts:
+        # Mount rootCA.crt at the Debian-family trust store path.
+        # For RHEL/Amazon Linux, use: /etc/pki/ca-trust/source/anchors/cos-root-ca.crt
+        - name: root-ca
+          mountPath: /usr/local/share/ca-certificates/cos-root-ca.crt
+          subPath: ca.crt
+          readOnly: true
+
+      # The trust-update commands write to /etc/ssl or /etc/pki and require UID 0 at startup.
+      securityContext:
+        runAsUser: 0
+
+      lifecycle:
+        postStart:
+          exec:
+            command:
+              - sh
+              - -c
+              - "update-ca-certificates"
+              # For RHEL/Amazon Linux, use: "update-ca-trust extract"
+
+  volumes:
+    - name: root-ca
+      secret:
+        secretName: cos-root-ca-trust

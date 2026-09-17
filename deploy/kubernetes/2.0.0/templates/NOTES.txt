@@ -1,0 +1,170 @@
+================================================================================
+CipherTrust Transparent Encryption for Kubernetes {{ .Chart.Version }}
+================================================================================
+
+Thank you for installing CTE for Kubernetes!
+
+DEPLOYMENT SUMMARY
+------------------
+Release Name:   {{ .Release.Name }}
+Namespace:      {{ .Release.Namespace }}
+Chart Version:  {{ .Chart.Version }}
+App Version:    {{ .Chart.AppVersion }}
+
+DEPLOYED COMPONENTS
+-------------------
+{{- if .Values.csi.enabled }}
+
+✓ CSI Driver (Storage)
+  - CSI Controller:  cte-csi-controller
+  - CSI Node Server: cte-csi-node (DaemonSet on all nodes)
+  - CSI Driver:      csi.cte.cpl.thalesgroup.com
+  - ConfigMap:       cte-k8s-config
+{{- end }}
+{{- if .Values.cos.enabled }}
+
+✓ COS Controller (Object Storage)
+  - Deployment:      {{ .Values.cos.controller.name }}
+  - Replicas:        {{ .Values.cos.replicaCount }}
+  - Service Account: {{ .Values.cos.serviceAccountName }}
+  - CRD:             CMRegistrationClass
+{{- end }}
+
+VERIFICATION
+------------
+{{- if .Values.csi.enabled }}
+
+Check CSI Driver status:
+  $ kubectl get csidriver csi.cte.cpl.thalesgroup.com
+  $ kubectl get pods -n {{ .Release.Namespace }} -l app=cte-csi-controller
+  $ kubectl get pods -n {{ .Release.Namespace }} -l app=cte-csi-node
+
+Check CSI components:
+  $ kubectl get all -n {{ .Release.Namespace }} -l app.kubernetes.io/name=cte-csi
+{{- end }}
+{{- if .Values.cos.enabled }}
+
+Check COS Controller status:
+  $ kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name=cte-cos
+  $ kubectl get deployment -n {{ .Release.Namespace }} {{ .Values.cos.controller.name }}
+
+Check COS CRD:
+  $ kubectl get crd cmregistrationclasses.thalesgroup.com
+  $ kubectl get cmregistrationclass -A
+{{- end }}
+
+View logs:
+{{- if .Values.csi.enabled }}
+  $ kubectl logs -n {{ .Release.Namespace }} -l app=cte-csi-controller -f
+  $ kubectl logs -n {{ .Release.Namespace }} -l app=cte-csi-node -f
+{{- end }}
+{{- if .Values.cos.enabled }}
+  $ kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name=cte-cos -f
+{{- end }}
+
+CONFIGURATION
+-------------
+Container Image:  {{ .Values.image.cteCsiImage }}:{{ .Values.image.cteCsiTag }}
+Pull Policy:      {{ .Values.image.pullPolicy }}
+{{- if .Values.imagePullSecrets }}
+Image Pull Secret: {{ .Values.imagePullSecrets }}
+{{- else }}
+Image Pull Secret: None (using public registry)
+{{- end }}
+{{- if .Values.csi.enabled }}
+CRI Socket:       {{ .Values.csi.CRISocket }}
+{{- end }}
+
+NEXT STEPS
+----------
+{{- if .Values.csi.enabled }}
+
+1. Configure CipherTrust Manager connection:
+   $ kubectl edit configmap cte-k8s-config -n {{ .Release.Namespace }}
+
+2. Create a StorageClass that uses the CSI driver:
+   ---
+   apiVersion: storage.k8s.io/v1
+   kind: StorageClass
+   metadata:
+     name: cte-encrypted
+   provisioner: csi.cte.cpl.thalesgroup.com
+   parameters:
+     # Add your CTE-specific parameters
+   volumeBindingMode: Immediate
+
+3. Create a PersistentVolumeClaim using the StorageClass:
+   ---
+   apiVersion: v1
+   kind: PersistentVolumeClaim
+   metadata:
+     name: cte-pvc
+   spec:
+     accessModes:
+       - ReadWriteOnce
+     storageClassName: cte-encrypted
+     resources:
+       requests:
+         storage: 1Gi
+
+4. Use the PVC in your application pods.
+{{- end }}
+{{- if .Values.cos.enabled }}
+
+1. Configure CipherTrust Manager for COS:
+   Ensure your CipherTrust Manager is configured for Cloud Object Storage.
+
+2. Create a CMRegistrationClass resource:
+   ---
+   apiVersion: thalesgroup.com/v1
+   kind: CMRegistrationClass
+   metadata:
+     name: my-cm-registration
+   spec:
+     # Add your CM registration parameters
+
+3. Reference the CMRegistrationClass in your application deployments.
+{{- end }}
+
+RESOURCES
+---------
+Documentation: https://thalesdocs.com/ctp/cte-con/cte-k8s/latest/
+Support:       Contact Thales Customer Support
+GitHub:        https://github.com/thalescpl-io/ciphertrust-transparent-encryption-kubernetes
+
+UNINSTALL
+---------
+To remove this release:
+  $ helm uninstall {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+To remove the CRDs (if needed):
+  $ kubectl delete csidriver csi.cte.cpl.thalesgroup.com
+{{- if .Values.cos.enabled }}
+  $ kubectl delete crd cmregistrationclasses.thalesgroup.com
+{{- end }}
+
+TROUBLESHOOTING
+---------------
+If you encounter issues:
+
+1. Check pod status:
+   $ kubectl get pods -n {{ .Release.Namespace }} -o wide
+
+2. Check events:
+   $ kubectl get events -n {{ .Release.Namespace }} --sort-by='.lastTimestamp'
+
+3. Verify RBAC permissions:
+   $ kubectl get clusterrole | grep cte
+   $ kubectl get clusterrolebinding | grep cte
+
+4. Check logs for errors:
+{{- if .Values.csi.enabled }}
+   $ kubectl logs -n {{ .Release.Namespace }} -l app=cte-csi-controller --tail=100
+{{- end }}
+{{- if .Values.cos.enabled }}
+   $ kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name=cte-cos --tail=100
+{{- end }}
+
+For detailed troubleshooting, refer to the documentation.
+
+================================================================================
